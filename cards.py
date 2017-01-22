@@ -1,64 +1,101 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.6
 
-from collections import namedtuple
-from functools import total_ordering
+import attr
+from attr.validators import instance_of
 from random import shuffle
 
-Suit = namedtuple('Suit', 'id color')
-HEARTS = Suit(id='♡', color='red')
-DIAMONDS = Suit(id='♢', color='red')
-CLUBS = Suit(id='♣', color='black')
-SPADES = Suit(id='♠', color='black')
-SUITS = (HEARTS, DIAMONDS, CLUBS, SPADES)
-NAME_BY_SUIT = {HEARTS: 'HEARTS', DIAMONDS: 'DIAMONDS', CLUBS: 'CLUBS', SPADES: 'SPADES'}
+def make_validator(pred):
+    def validate(instance, attribute, value):
+        if not pred(instance, attribute, value):
+            raise ValueError(value)
+    return validate
 
-Rank = namedtuple('Rank', 'id')
-RANKIDS_ACE_HI = list(range(2, 11)) + ['J', 'Q', 'K', 'A'] # [2, 3, ..., 10, 'J', 'Q', 'K', 'A']
-RANKIDS_ACE_LO = [RANKIDS_ACE_HI[-1]] + RANKIDS_ACE_HI[:-1] # ['A', 2, 3, ..., 10, 'J', 'Q', 'K']
-INDEX_BY_RANKID_ACE_HI = dict(zip(RANKIDS_ACE_HI, range(2, 15))) # {2: 2, 3: 3, ..., J: 11, Q: 12, K: 13, A: 14}
-INDEX_BY_RANKID_ACE_LO = dict(INDEX_BY_RANKID_ACE_HI, A=1) # {A: 1, 2: 2, 3: 3, ..., J: 11, Q: 12, K: 13}
-# rank comparison functions, for determining whether e.g. Rank(id='A') < Rank(id='K')
-Rank.__eq__ = lambda self, other: self.id == other.id
-rank_lt_ace_hi = lambda self, other: INDEX_BY_RANKID_ACE_HI[self.id] < INDEX_BY_RANKID_ACE_HI[other.id]
-rank_lt_ace_lo = lambda self, other: INDEX_BY_RANKID_ACE_LO[self.id] < INDEX_BY_RANKID_ACE_LO[other.id]
-Rank.__lt__ = rank_lt_ace_hi # choose ace hi by default, easily swapped out though
-Rank = total_ordering(Rank)
-RANKS = tuple(Rank(id=i) for i in RANKIDS_ACE_HI)
-NAME_BY_RANKID = dict(zip(RANKIDS_ACE_HI, ('TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'JACK', 'QUEEN', 'KING', 'ACE')))
-# export names for each rank to this module's namespace, so e.g. "TWO" refers to the Rank(id=2) object
-locals().update({NAME_BY_RANKID[rank.id]: rank for rank in RANKS})
+# Implement default Rank semantics: Ace value can be indeterminate (None),
+# low (1), or high (14). Non-Ace value can be one of 2, 3, ..., 12 (Q), 13 (K).
+# Can easily be overridden if e.g. Ace should have value 1 or 10, and J, Q, K
+# should all have value 10.
+#
+# Ranks are immutable. Create new ones as needed rather than modifying existing ones.
+@attr.s(frozen=True, repr=False)
+class Rank:
+    ACE_NO_VAL = None  # neither hi nor lo
+    ACE_LO_VAL = 1
+    ACE_HI_VAL = 14
+    ACE_VALS = {ACE_NO_VAL, ACE_LO_VAL, ACE_HI_VAL}
+    NONACE_VALS = set(range(2, 14))
+    VALID_VALS = ACE_VALS | NONACE_VALS
+    IDs = tuple(',A,2,3,4,5,6,7,8,9,10,J,Q,K,A'.split(','))
+    id = property(lambda self: self.IDs[self.value] if self.value else 'A')
+    value = attr.ib(validator=make_validator(lambda i, a, v: v in i.VALID_VALS))
+    #__repr__ = lambda self: self.id
+    __repr__ = lambda self: 'a' if self.value == self.ACE_LO_VAL else self.id
 
-Card = namedtuple('Card', 'rank suit')
-# print cards out like 3♡ instead of Card(Rank(id=3), suit=Suit(id='♡'...
-Card.__str__ = lambda self: str(self.rank.id) + str(self.suit.id)
-Card.__repr__ = Card.__str__
-# give Cards a default ordering, expecting overriding as desired
-Card.__eq__ = lambda self, other: self.rank == other.rank and self.suit == other.suit
-Card.__lt__ = lambda self, other: self.rank < other.rank if self.suit == other.suit else SUITS.index(self.suit) < SUITS.index(other.suit)
-Card = total_ordering(Card)
-CARDS = tuple(Card(rank=rank, suit=suit) for suit in SUITS for rank in RANKS)
-# export names for each card to this module's namespace, so you can refer to the two of hearts with "TWO_HEARTS"
-locals().update({NAME_BY_RANKID[card.rank.id]+'_'+NAME_BY_SUIT[card.suit]: card for card in CARDS})
+rAno = Rank(Rank.ACE_NO_VAL)
+rAlo = Rank(Rank.ACE_LO_VAL)
+rAhi = Rank(Rank.ACE_HI_VAL)
 
-def new_shuffled_deck():
-    '''Create and return a new list of the 52 standard cards in random order.
+# Default ranks. An alternative set may be used as necessary (e.g. if J, Q, K should all equal 10).
+RANKS = {r for r in [rAno] + [Rank(i) for i in range(2, 14)]}
 
-    >>> deck = new_shuffled_deck()
-    >>> len(deck) # no jokers!
+# Suits are immutable. The singleton instances created below should suffice.
+@attr.s(frozen=True, repr=False)
+class Suit:
+    VALID_VALS   = {'hearts',        'diamonds',        'clubs',          'spades'}
+    REPR_BY_VAL  = {'hearts': '♡',   'diamonds': '♢',   'clubs': '♣',     'spades': '♠'}
+    COLOR_BY_VAL = {'hearts': 'red', 'diamonds': 'red', 'clubs': 'black', 'spades': 'black'}
+    value = attr.ib(validator=make_validator(lambda i, a, v: v in i.VALID_VALS))
+    color = property(lambda self: self.COLOR_BY_VAL[self.value])
+    __repr__ = lambda self: self.REPR_BY_VAL[self.value]
+
+HEARTS   = Suit('hearts')
+DIAMONDS = Suit('diamonds')
+CLUBS    = Suit('clubs')
+SPADES   = Suit('spades')
+SUITS    = (HEARTS, DIAMONDS, CLUBS, SPADES)
+
+
+def to_rank(rank_or_rankval):
+    return rank_or_rankval if isinstance(rank_or_rankval, Rank) else Rank(rank_or_rankval)
+
+# Cards are immutable. Create new ones as needed rather than modifying existing ones.
+@attr.s(frozen=True, repr=False)
+class Card:
+    """
+    Sorting is by rank alone (suit not considered)::
+
+        >>> cards = [c7d, c5c, c8s, c8h]
+        >>> sorted(cards) == [c5h, c7d, c8s, c8h]
+        True
+
+    """
+    rank = attr.ib(convert=to_rank, validator=instance_of(Rank))
+    suit = attr.ib(validator=instance_of(Suit), cmp=False)
+    __repr__ = lambda self: f'[{self.rank!r}{self.suit!r}]'
+
+# Punting on Joker.
+
+# Default cards. Override as necessary. Treat as templates; only modify copies.
+CARDS = {Card(r, s) for s in SUITS for r in RANKS}
+locals().update({'c%s%s' % (c.rank.id, c.suit.value[0]): c for c in CARDS})
+
+
+def new_deck(shuffled=True):
+    """
+    >>> deck = new_deck()
+    >>> len(deck)
     52
-    >>> len(set(card.rank for card in deck)) # 13 unique ranks
+    >>> len({card.rank for card in deck})  # 13 unique ranks
     13
-    >>> len(set(card.suit for card in deck)) # 4 unique suits
+    >>> len({card.suit for card in deck})  # 4 unique suits
     4
-    >>> another_deck = new_shuffled_deck()
-    >>> deck == another_deck # highly unlikely if our shuffle function is any good
+    >>> another_deck = new_deck()
+    >>> deck == another_deck  # unlikely
     False
-    >>> sorted(deck) == sorted(another_deck)
-    True
-    '''
+    """
     deck = list(CARDS)
-    shuffle(deck)
+    if shuffled: shuffle(deck)
     return deck
+
 
 if __name__ == '__main__':
     import doctest
