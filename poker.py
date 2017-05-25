@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 
-from attr import assoc
+from attr import evolve
 from cards import *
 from collections import Counter
 from heapq import nlargest
@@ -8,15 +8,15 @@ from heapq import nlargest
 def replace_rank(*cards, from_=(rAno, rAlo), to=rAhi):
     """
 
-        >>> alo = assoc(cAh, rank=rAlo)
-        >>> ahi = assoc(cAs, rank=rAhi)
+        >>> alo = evolve(cAh, rank=rAlo)
+        >>> ahi = evolve(cAs, rank=rAhi)
         >>> check = replace_rank(alo, ahi, from_=(rAhi, rAlo), to=rAno)
         >>> expect = {cAh, cAs}
         >>> check == expect
         True
 
     """
-    return {assoc(c, rank=to) if c.rank in from_ else c for c in cards}
+    return {evolve(c, rank=to) if c.rank in from_ else c for c in cards}
 
 def highestn(*cards, n=5):
     cards = replace_rank(*cards, from_=(rAno, rAlo), to=rAhi)

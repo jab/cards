@@ -61,15 +61,15 @@ def to_rank(rank_or_rankval):
 @attr.s(frozen=True, repr=False)
 class Card:
     """
-    Sorting is by rank alone (suit not considered)::
+    Sorting is by rank and then suit::
 
         >>> cards = [c7d, c5c, c8s, c8h]
-        >>> sorted(cards) == [c5h, c7d, c8s, c8h]
+        >>> sorted(cards) == [c5c, c7d, c8h, c8s]
         True
 
     """
     rank = attr.ib(convert=to_rank, validator=instance_of(Rank))
-    suit = attr.ib(validator=instance_of(Suit), cmp=False)
+    suit = attr.ib(validator=instance_of(Suit))
     __repr__ = lambda self: f'[{self.rank!r}{self.suit!r}]'
 
 # Punting on Joker.
